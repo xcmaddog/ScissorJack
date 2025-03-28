@@ -14,7 +14,11 @@ w = 1.25 #in
 n = 2
 # Applied Force
 F_A = 700 #lbf
-
+# length of diagonal member
+l_diag = 8.5 #inches
+#start and end angles, degrees
+theta_start = 0
+theta_end = 45
 """
 scissor_forces(applied_force, cross_bar_length; diagonal_length = 8.5)
 This function returns the force in the diagonal and cross-bar members of a scissor jack.
@@ -93,6 +97,17 @@ function von_mises_stress(sigma_x, sigma_y, tau_xy)
     return sqrt((sigma_x^2) + (sigma_y^2) - (sigma_x*sigma_y) + (3*(tau_xy^2)))
 end
 
+"""
+function that calculates the jack lifting range in inches given a start/end angle (in degrees, measured from the ground to the diagonal member)
+the diagonal member length in inches, and the pin hole distance from the end of the member
+"""
+function jack_lift_range(angleStart, angleEnd, memberLength, holeDist) 
+    heightInit = 2 * sind(angleStart) * (memberLength - holeDist) #calculates vertical component of starting jack position using angles and length
+    heightFinal = 2 * sind(angleEnd) * (memberLength - holeDist)  #same as above with maximum jack sonition
+    liftRange = heightFinal - heightInit
+    return liftRange
+end
+
 #Forces in members ****************************************
 F_d, F_cb = scissor_forces(F_A, 13.02)
 
@@ -132,3 +147,7 @@ pb = pin_bearing_stress(F_cb, d, t_cb)
 pb = von_mises_stress(pb, 0.0, 0.0)
 pb = pb / 1000
 println("pin bearing stress: " * string(pb) * " kpsi")
+
+#jack lift range
+lr = jack_lift_range(theta_start, theta_end, l_diag, l)
+println("jack lift range: " * string(lr) * " inches")
