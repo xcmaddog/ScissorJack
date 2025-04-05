@@ -141,6 +141,11 @@ cross_bar_length is the length of the cross bar in inches
 diagonal_length is the length of the diagonal bar in inches. Its default length is 8.5 inches.
 """
 function scissor_forces(applied_force, cross_bar_length; diagonal_length = 8.5)
+    #this is bad code:
+    if abs(cross_bar_length / (2 * diagonal_length)) > 1
+        return applied_force, applied_force
+    end
+
     alpha = acos(cross_bar_length / (2 * diagonal_length)) #rad
     F_d = (1/2) * (applied_force / sin(alpha)) #lbf
     F_cb = applied_force * cot(alpha) #lbf
@@ -567,7 +572,7 @@ end_condition_constant is the end condition constant for buckling in the crossba
 """
 
 function make_objective(diagonal_member::DiagonalMember, crossbar::Crossbar, pin::Pin, applied_force, end_condition_constant)
-    function objective_function!(x, g)
+    function objective_function!(g, x)
         #x is a vector that will have:
             #the length of the diagonal member 
             #the length of the crossbar
@@ -581,35 +586,37 @@ function make_objective(diagonal_member::DiagonalMember, crossbar::Crossbar, pin
         
         #Calculate safety factors for failure modes (write to items in vector g)
         #factor of safety for tearout on diagonal member
-        g[1] = safety_diagonal_tear(applied_force, diagonal_member.S_y, crossbar_length, diagonal_length,
+        g[1] = crossbar_length - (2 * diagonal_length)
+
+        g[2] = safety_diagonal_tear(applied_force, diagonal_member.S_y, crossbar_length, diagonal_length,
             diagonal_tearout_length, diagonal_member.t)
 
         #factor of safety for axial stress on diagonal member
-        g[2] = safety_diagonal_axial(applied_force, diagonal_member.S_y, crossbar_length, diagonal_length,
+        g[3] = safety_diagonal_axial(applied_force, diagonal_member.S_y, crossbar_length, diagonal_length,
             diagonal_member.w, pin.d, diagonal_member.t)
 
         #factor of safety for bearing stress on diagonal member
-        g[3] = safety_diagonal_bearing(applied_force, diagonal_member.S_y, crossbar_length, diagonal_length,
+        g[4] = safety_diagonal_bearing(applied_force, diagonal_member.S_y, crossbar_length, diagonal_length,
             pin.d, diagonal_member.t) 
 
         #factor of safety for bearing stress on crossbar
-        g[4] = safety_crossbar_bearing_round(applied_force, diagonal_member.S_y, crossbar_length,
+        g[5] = safety_crossbar_bearing_round(applied_force, diagonal_member.S_y, crossbar_length,
             diagonal_length, pin.d, crossbar.d) 
 
         #for solid round cross section crossbar
-        g[5] = safety_buckling_crossbar_round(applied_force, crossbar.S_y, crossbar.E, crossbar_length, 
+        g[6] = safety_buckling_crossbar_round(applied_force, crossbar.S_y, crossbar.E, crossbar_length, 
             diagonal_length, crossbar.d, end_condition_constant)
 
         #factor of safety for shear on pin
-        g[6] = safety_pin_shear(applied_force, pin.S_y, crossbar_length, diagonal_length, 2, pin.d) 
+        g[7] = safety_pin_shear(applied_force, pin.S_y, crossbar_length, diagonal_length, 2, pin.d) 
 
         #factor of safety for bearing stress on pin
-        g[7] = safety_pin_bearing_round(applied_force, pin.S_y, crossbar_length, diagonal_length, pin.d,
+        g[8] = safety_pin_bearing_round(applied_force, pin.S_y, crossbar_length, diagonal_length, pin.d,
             crossbar.d, diagonal_member.t) 
         
         #Check geometry (write to item in vector g)
         #the magnitude of the range of movement the jack has
-        g[8] = jack_lift_range(15, 75, diagonal_length + (2 * diagonal_tearout_length),
+        g[9] = jack_lift_range(15, 75, diagonal_length + (2 * diagonal_tearout_length),
             2 * diagonal_tearout_length) 
         
         #Check any other constraints (write to item in vector g) (weight?)
@@ -639,8 +646,8 @@ function combo_optimizer(diagonal_member::DiagonalMember, crossbar::Crossbar, pi
     x0 = [1.0, 1.0, 1.0, 1.0]  # starting point
     lx = [0.01, 0.01, 0.01, 0.01]  # lower bounds on x
     ux = [24.0, 48.0, 6.0, 6.0]  # upper bounds on x
-    ng = 8  # number of constraints
-    lg = [safety.diag_tearout, safety.diag_axial, safety.diag_bearing, safety.cross_bearing, 
+    ng = 9  # number of constraints
+    lg = [0.0, safety.diag_tearout, safety.diag_axial, safety.diag_bearing, safety.cross_bearing, 
             safety.cross_buckling, safety.pin_shear, safety.pin_bearing, 6.0]  # lower bounds on g
     ug = Inf*ones(ng)  # upper bounds on g
     options = Options(solver=IPOPT())  # choosing IPOPT solver
@@ -666,17 +673,18 @@ pin3 = Pin("92186A546",0.25,1.5,80000,3.98)
 pin4 = Pin("91735A409",0.3125,0.5,80000,11.08)
 pin5 = Pin("91735A611",0.21875,1.5,80000,11.40)
 pin6 = Pin("91259A626", 0.375, 1.25, 140000, 2.54)
-pin7 = Pin("91259A468", 0.188, 1.25, 140000, 7.91)
-pin8 = Pin("91259A475", 0.313, 0.438, 140000, 8.46)
-pin9 = Pin("91259A796", 0.625, 1.25, 140000, 5.86)
-pin10 = Pin("91259A583", 0.313, 1.00, 140000, 2.09)
-pin11 = Pin("91259A626", 0.375, 1.25, 140000, 2.54)
-pin12 = Pin("91259A468", 0.188, 1.25, 140000, 7.91)
-pin13 = Pin("91259A475", 0.313, 0.438, 140000, 8.46)
-pin14 = Pin("91259A796", 0.625, 1.25, 140000, 5.86)
-pin15 = Pin("91259A583", 0.313, 1.00, 140000, 2.09)
+#pin7 = Pin("91259A468", 0.188, 1.25, 140000, 7.91)
+#pin8 = Pin("91259A475", 0.313, 0.438, 140000, 8.46)
+#pin9 = Pin("91259A796", 0.625, 1.25, 140000, 5.86)
+#pin10 = Pin("91259A583", 0.313, 1.00, 140000, 2.09)
+#pin11 = Pin("91259A626", 0.375, 1.25, 140000, 2.54)
+#pin12 = Pin("91259A468", 0.188, 1.25, 140000, 7.91)
+#pin13 = Pin("91259A475", 0.313, 0.438, 140000, 8.46)
+#pin14 = Pin("91259A796", 0.625, 1.25, 140000, 5.86)
+#pin15 = Pin("91259A583", 0.313, 1.00, 140000, 2.09)
 
-pins = (pin1, pin2, pin3, pin4, pin5,pin6,pin7,pin8,pin9,pin10, pin11, pin12, pin13, pin14, pin15)  
+#pins = (pin1, pin2, pin3, pin4, pin5,pin6,pin7,pin8,pin9,pin10, pin11, pin12, pin13, pin14, pin15)
+pins = (pin1, pin2, pin3, pin4, pin5, pin6)
 
 
 #Diagonal member components
@@ -688,17 +696,18 @@ diag3 = DiagonalMember("7779T35", 0.125, 0.75, 36000, 0.4475)
 diag4 = DiagonalMember("7779T37", 0.156, 0.5, 36000, 0.2725)
 diag5 = DiagonalMember("7779T43", 0.17, 1.41, 36000, 0.9125)
 diag6 = DiagonalMember("7779T45", 0.184, 1.584, 36000, 1.1691)
-diag7 = DiagonalMember("7779T47", 0.19, 1.75, 36000, 1.46166)
-diag8 = DiagonalMember("7779T49", 0.2, 1.92, 36000, 1.7475)
-diag9 = DiagonalMember("7779T39", 0.1875, 1, 36000, 0.6066)
-diag10 = DiagonalMember("7779T41", 0.25, 0.625, 36000, 0.6775)
-diag11 = DiagonalMember("7779T31", 0.125, 0.375, 36000, 0.7758333)
-diag12 = DiagonalMember("7779T33", 0.150, 1.00, 36000, 0.464166)
-diag13 = DiagonalMember("7779T35", 0.125, 0.750, 36000, 0.4475)
-diag14 = DiagonalMember("7779T37", 0.156, 0.500, 36000, 0.2725)
-diag15 = DiagonalMember("7779T43", 0.170, 1.41, 36000, 0.9125)
+#diag7 = DiagonalMember("7779T47", 0.19, 1.75, 36000, 1.46166)
+#diag8 = DiagonalMember("7779T49", 0.2, 1.92, 36000, 1.7475)
+#diag9 = DiagonalMember("7779T39", 0.1875, 1, 36000, 0.6066)
+#diag10 = DiagonalMember("7779T41", 0.25, 0.625, 36000, 0.6775)
+#diag11 = DiagonalMember("7779T31", 0.125, 0.375, 36000, 0.7758333)
+#diag12 = DiagonalMember("7779T33", 0.150, 1.00, 36000, 0.464166)
+#diag13 = DiagonalMember("7779T35", 0.125, 0.750, 36000, 0.4475)
+#diag14 = DiagonalMember("7779T37", 0.156, 0.500, 36000, 0.2725)
+#diag15 = DiagonalMember("7779T43", 0.170, 1.41, 36000, 0.9125)
 
-diags = (diag1,diag2,diag3,diag4,diag5,diag6,diag7,diag8,diag9,diag10, diag11, diag12, diag13, diag14, diag15)
+#diags = (diag1,diag2,diag3,diag4,diag5,diag6,diag7,diag8,diag9,diag10, diag11, diag12, diag13, diag14, diag15)
+diags = (diag1, diag2, diag3, diag4, diag5, diag6)
 
 #Crossbar components
 #cbXX = CrossbarRound(name, diameter, yield_strength, modulus_of_elasticity, price_per_inch)
@@ -709,17 +718,18 @@ cb3 = CrossbarRound("6818T54",0.5625,130000,29000000,1.6708)
 cb4 = CrossbarRound("6818T53",0.5,130000,29000000,1.365)
 cb5 = CrossbarRound("6818T27",1.5,130000,29000000,4.31)
 cb6 = CrossbarRound("8935K336", 0.375, 95000, 29000000, 0.298333)
-cb7 = CrossbarRound("8935K24", 3.000, 95000, 29000000, 11.248333)
-cb8 = CrossbarRound("8935K11", 1.500, 95000, 29000000, 3.44554)
-cb9 = CrossbarRound("8920K231", 1.000, 54000, 29000000, 1.015833)
-cb10 = CrossbarRound("8920K195", 0.7500, 54000, 29000000, 0.6341666)
-cb11 = CrossbarRound("8935K336", 0.375, 95000, 29000000, 0.298333)
-cb12 = CrossbarRound("8935K24", 3.000, 95000, 29000000, 11.248333)
-cb13 = CrossbarRound("8935K11", 1.500, 95000, 29000000, 3.44554)
-cb14 = CrossbarRound("8920K231", 1.000, 54000, 29000000, 1.015833)
-cb15 = CrossbarRound("8920K195", 0.7500, 54000, 29000000, 0.6341666)
+#cb7 = CrossbarRound("8935K24", 3.000, 95000, 29000000, 11.248333)
+#cb8 = CrossbarRound("8935K11", 1.500, 95000, 29000000, 3.44554)
+#cb9 = CrossbarRound("8920K231", 1.000, 54000, 29000000, 1.015833)
+#cb10 = CrossbarRound("8920K195", 0.7500, 54000, 29000000, 0.6341666)
+#cb11 = CrossbarRound("8935K336", 0.375, 95000, 29000000, 0.298333)
+#cb12 = CrossbarRound("8935K24", 3.000, 95000, 29000000, 11.248333)
+#cb13 = CrossbarRound("8935K11", 1.500, 95000, 29000000, 3.44554)
+#cb14 = CrossbarRound("8920K231", 1.000, 54000, 29000000, 1.015833)
+#cb15 = CrossbarRound("8920K195", 0.7500, 54000, 29000000, 0.6341666)
     
-cbs = (cb1, cb2, cb3, cb4, cb5, cb6, cb7, cb8, cb9, cb10, cb11, cb12, cb13, cb14, cb15)
+#cbs = (cb1, cb2, cb3, cb4, cb5, cb6, cb7, cb8, cb9, cb10, cb11, cb12, cb13, cb14, cb15)
+cbs = (cb1, cb2, cb3, cb4, cb5, cb6)
 
 #define the safety profile 
 #SafetyProfile(diag_tearout, diag_axial, diag_bearing, cross_bearing, cross_buckling, pin_shear, pin_bearing)
